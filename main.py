@@ -509,7 +509,10 @@ def cli(arguments):
             exit()
 
         elif argument in ["--build", "-b"]:
-            os.system("python3 builder.py")
+            # call builder.py from the same directory as main.py
+            script_dir = os.path.dirname(os.path.realpath(__file__))
+            builder_path = os.path.join(script_dir, "builder.py")
+            os.system(f"python3 {builder_path}")
             exit()
 
         elif argument in ["--remove", "-r", "--uninstall"]:
