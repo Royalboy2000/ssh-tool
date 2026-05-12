@@ -30,6 +30,9 @@ Only use OnlyRAT on systems you own or have explicit permission to test. Unautho
 ---
 
 ## 🚀 Features
+- **Advanced Builder:** Automate configuration and compile EXE stagers with one command.
+- **interact.sh Support:** Exfiltrate session data to interact.sh for easier management.
+- **EXE Stagers:** Built-in support for compiling C-based stagers for Windows.
 - **Fileless Execution:** Operates primarily through network commands and SSH.
 - **Remote Console:** Full access to the target's terminal.
 - **File Transfer:** Easy upload and download capabilities via SCP.
@@ -60,6 +63,14 @@ cd MK01-OnlyRAT
 bash install.sh
 ```
 Restart your terminal after installation. You can now run the tool using the `onlyrat` command.
+
+### 2. Advanced Builder & EXE Generation
+To simplify setup, you can use the built-in builder. This will prompt you for your connection details (VPS/Local), exfiltration URLs (Discord/Interact.sh), and automatically patch the necessary files and compile a `.exe` stager.
+
+```bash
+onlyrat --build
+```
+This requires `mingw-w64` to be installed on your Kali system (`sudo apt install mingw-w64`).
 
 ---
 

