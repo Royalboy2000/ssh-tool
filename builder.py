@@ -104,14 +104,17 @@ def main():
         if not check_port_vps(ssh, vps_web_port):
             if get_input("Web Port in use. Continue? (y/n)", "n").lower() != 'y': sys.exit(1)
 
-        # 3. Configure VPS SSH
-        log("Configuring VPS SSH (Forwarding, GatewayPorts)...")
+        # 3. Configure VPS (SSH & Firewall)
+        log("Configuring VPS (SSH, GatewayPorts, UFW Firewall)...")
         vps_setup_commands = [
             "sed -i 's/^#AllowTcpForwarding.*/AllowTcpForwarding yes/' /etc/ssh/sshd_config",
             "sed -i 's/^AllowTcpForwarding.*/AllowTcpForwarding yes/' /etc/ssh/sshd_config",
             "sed -i 's/^#GatewayPorts.*/GatewayPorts yes/' /etc/ssh/sshd_config",
             "sed -i 's/^GatewayPorts.*/GatewayPorts yes/' /etc/ssh/sshd_config",
-            "service ssh restart || systemctl restart ssh"
+            "service ssh restart || systemctl restart ssh",
+            f"ufw allow {vps_forward_port}/tcp",
+            f"ufw allow {vps_web_port}/tcp",
+            "ufw --force enable"
         ]
         run_vps_commands(ssh, vps_setup_commands)
 
