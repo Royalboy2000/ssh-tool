@@ -70,7 +70,12 @@ To simplify setup, you can use the built-in builder. This will prompt you for yo
 ```bash
 onlyrat --build
 ```
-This requires `mingw-w64` to be installed on your Kali system (`sudo apt install mingw-w64`).
+This requires `mingw-w64` and `python3-paramiko` to be installed on your Kali system:
+```bash
+sudo apt install mingw-w64 python3-paramiko
+```
+
+The builder now supports automated VPS deployment using a built-in Python web server. This avoids conflicts with existing Nginx/Apache installations and allows you to specify a custom web directory and port.
 
 ---
 
